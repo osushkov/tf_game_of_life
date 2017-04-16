@@ -2,55 +2,70 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import tensorflow as tf
+import time
 
-def countNeighbours(board, tx, ty):
-    num = 0
-    for x in [max(tx - 1, 0), tx, min(tx + 1, board.shape[0] - 1)]:
-        for y in [max(ty - 1, 0), ty, min(ty + 1, board.shape[1] - 1)]:
-            num += board[x, y]
-    return num - board[tx, ty]
+def showAnimation(list_of_array_2d, fps):
+    plt.ion()
+    img = None
+    for m in list_of_array_2d:
+        t = time.time()
+        plt.grid(False)
+        if img is None:
+            img = plt.imshow(m, interpolation='nearest')
+        else:
+            img.set_data(m)
+        plt.draw()
+        plt.pause(max(1.0 / fps - (time.time() - t), 0.1))
+
+def initialBoard():
+    board_state = np.zeros((10, 10), np.float32)
+    board_state[2,1] = 1.0
+    board_state[2,2] = 1.0
+    board_state[2,3] = 1.0
+
+    board_state[3,2] = 1.0
+    board_state[3,3] = 1.0
+    board_state[3,4] = 1.0
+
+    return board_state
+
+def createGraph(board_shape):
+    in_state = tf.placeholder(tf.float32, shape=board_shape)
+
+    new_values = []
+    for x in range(1, board_shape[0] - 1):
+        for y in range(1, board_shape[1] - 1):
+            ss = tf.strided_slice(in_state, begin=[x-1, y-1], end=[x+2, y+2], strides=[1,1])
+            sum = tf.reduce_sum(ss)
+
+            def c1(): return tf.constant(1.0)
+            def c0(): return tf.constant(0.0)
+
+            def f1(): return tf.cond(tf.logical_and(tf.greater(sum, 2.9), tf.less(sum, 4.1)), c1, c0)
+            def f0(): return tf.cond(tf.logical_and(tf.greater(sum, 2.9), tf.less(sum, 3.1)), c1, c0)
+
+            r = tf.cond(tf.greater(in_state[x, y], 0.9), f1, f0)
+            new_values.append(r)
+
+    out_state = tf.reshape(tf.stack(new_values), ([board_shape[0]-2, board_shape[1]-2]))
+
+    paddings = [[1, 1,], [1, 1]]
+    out_state = tf.pad(out_state, paddings, "CONSTANT")
+
+    return in_state, out_state
 
 
-def nextTimestemp(prevBoard):
-    nextBoard = np.zeros_like(prevBoard)
+board = initialBoard()
+seen_states = [board]
 
-    for x in range(1, nextBoard.shape[0] - 1):
-        for y in range(1, nextBoard.shape[1] - 1):
-            neighbours = countNeighbours(prevBoard, x, y)
-            if prevBoard[x, y] == 1:
-                nextBoard[x, y] = 1 if (neighbours >= 2 and neighbours <= 3) else 0
-            else:
-                nextBoard[x, y] = 1 if neighbours == 3 else 0
+with tf.Graph().as_default():
+    in_state, outState = createGraph(board.shape)
 
-    return nextBoard
+    with tf.Session() as sess:
+        file_writer = tf.summary.FileWriter('train', sess.graph)
+        for _ in range(0, 100):
+            next_state = sess.run(outState, feed_dict={in_state: board})
+            seen_states.append(next_state)
+            board = next_state
 
-
-def createInitial(size):
-    result = np.zeros([size, size])
-    result[1:-1, 1:-1] = np.random.randint(2, size=(size - 2, size - 2))
-    return result
-
-
-BOARD_SIZE = 50
-state = createInitial(BOARD_SIZE)
-
-
-#
-# plt.ion()
-# for i in range(0, 1000):
-#     plt.imshow(state, cmap='Greys', interpolation='nearest')
-#     plt.draw()
-#     _ = raw_input("Press [enter] to continue.")
-#
-#     state = nextTimestemp(state)
-
-
-x = tf.constant([35, 40, 45], name='x')
-y = tf.Variable(x + 5, name='y')
-
-
-model = tf.global_variables_initializer()
-
-with tf.Session() as session:
-	session.run(model)
-	print(session.run(y))
+showAnimation(seen_states, 2)
