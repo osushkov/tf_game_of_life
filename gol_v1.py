@@ -58,14 +58,15 @@ def createGraph(board_shape):
 board = initialBoard()
 seen_states = [board]
 
-with tf.Graph().as_default():
-    in_state, outState = createGraph(board.shape)
+graph = tf.Graph()
+with graph.as_default():
+    in_state, out_state = createGraph(board.shape)
 
-    with tf.Session() as sess:
-        file_writer = tf.summary.FileWriter('train', sess.graph)
-        for _ in range(0, 100):
-            next_state = sess.run(outState, feed_dict={in_state: board})
-            seen_states.append(next_state)
-            board = next_state
+with tf.Session(graph=graph) as sess:
+    file_writer = tf.summary.FileWriter('train', sess.graph)
+    for _ in range(0, 100):
+        next_state = sess.run(out_state, feed_dict={in_state: board})
+        seen_states.append(next_state)
+        board = next_state
 
 showAnimation(seen_states, 2)
